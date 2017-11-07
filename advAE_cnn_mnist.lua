@@ -5,7 +5,7 @@ require 'optim';
 require 'gnuplot';
 
 
-zSize = 10
+zSize = 14
 --encoder
 encoder = nn.Sequential();
 encoder:add(nn.SpatialConvolution(1,6,5,5,1,1,2,2)) --1
@@ -114,7 +114,7 @@ local classification_criterion = nn.ClassNLLCriterion()
 local x,y
 
 batchSize = 3000
-iterations = 20
+iterations = 10
 
 local feval = function(params)
 	if theta~=params then
@@ -123,22 +123,26 @@ local feval = function(params)
 	gradTheta:zero()
 	gradThetaAdv:zero()
 	--print(#x)
-	local x1 = encoder:forward(x)
+	--[[local x1 = encoder:forward(x)
 	local x2 = torch.sign(x1)
 	local x2 = nn.Threshold(0,0):forward(x2)
 	local xHat = decoder:forward(x2)
+	--]]
+	local xHat = autoencoder:forward(x)
 	local loss = criterion:forward(xHat,x)
 	local gradLoss = criterion:backward(xHat,x)
-	decoder:backward(x2,gradLoss)
+	--[[decoder:backward(x2,gradLoss)
 	local gradEnc = decoder:updateGradInput(x2,gradLoss)
 	encoder:backward(x,gradEnc)
+	--]]
+	autoencoder:backward(x,gradLoss)
 
 	-- Train adversary to maximise log probability of real samples: max_D log(D(x))
-	local pred = adversary:forward(x1)
+	local pred = adversary:forward(encoder.output)
 	advLoss = classification_criterion:forward(pred,y)
 	local gradAdvLoss = classification_criterion:backward(pred,y)
-	adversary:backward(x1,gradAdvLoss)
-	local gradAdv = adversary:updateGradInput(x1, gradAdvLoss)
+	adversary:backward(encoder.output,gradAdvLoss)
+	local gradAdv = adversary:updateGradInput(encoder.output, gradAdvLoss)
 	encoder:backward(x,gradAdv)
 	-- Train encoder (generator) to play a minimax game with the adversary (discriminator): min_G max_D log(1 - D(G(x)))
 	--[[local minimaxLoss = criterion:forward(pred,YReal) -- Technically use max_G max_D log(D(G(x))) for same fixed point, stronger initial gradients
@@ -187,8 +191,9 @@ for epoch=1,iterations do
 	gnuplot.plotflush()
 
 	--permute training data
-	trainData = trainData:index(1,torch.randperm(trainData:size(1)):long())
-	trainlabels = trainlabels:index(1,torch.randperm(trainlabels:size(1)):long())
+	indices = torch.randperm(trainData:size(1)):long()
+	trainData = trainData:index(1,indices)
+	trainlabels = trainlabels:index(1,indices)
 
   autoencoder:evaluate()
   x = testData:narrow(1,1,50)
@@ -227,7 +232,7 @@ for i=1,x:size()[1] do
   x_hsv[i] = image.rgb2hsv(x[i])
 end
 --]]
-x_hsv = x--[[_hsv--]]:double():div(255)
+x_hsv = x
 local xHat_hsv= autoencoder:forward(x_hsv)
 --[[xHat_hsv = xHat_hsv:mul(255):byte()
 for i=1,50 do
