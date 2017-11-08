@@ -3,7 +3,10 @@ require 'image';
 mnist = require 'mnist';
 require 'optim';
 require 'gnuplot';
-
+--require 'cutorch';
+--require 'cunn';
+--require 'cudnn';
+require './BinarizedNeurons'
 
 zSize = 14
 --encoder
@@ -25,6 +28,8 @@ encoder:add(nn.Linear(120,84)) --10
 encoder:add(nn.ReLU()) --11
 encoder:add(nn.Linear(84,zSize)) --12
 
+binariser = nn.Sequential();
+binariser:add(BinarizedNeurons())
 --encoder = torch.load('model_MNIST2.t7')
 --encoder:remove(13)
 --encoder:add(nn.SoftMax())
@@ -55,9 +60,10 @@ decoder:add(nn.Sigmoid()) --16
 --autoencoder
 autoencoder = nn.Sequential()
 autoencoder:add(encoder)
+autoencoder:add(binariser)
 autoencoder:add(decoder)
 
-autoencoder = autoencoder
+autoencoder = autoencoder--:cuda()
 print(autoencoder)
 
 --adversary network
@@ -72,16 +78,16 @@ adversary:add(nn.Linear(16, 10))
 --adversary:add(nn.BatchNormalization(1))
 adversary:add(nn.LogSoftMax())
 
-adversary = adversary
+adversary = adversary--:cuda()
 print(adversary)
 
 --load MNIST data
-trainData = mnist.traindataset().data:double():div(255):reshape(60000,1,28,28)
-trainlabels = mnist.traindataset().label+1
+trainData = mnist.traindataset().data:double():div(255):reshape(60000,1,28,28)--:cuda()
+trainlabels = (mnist.traindataset().label+1)--:cuda()
 N = mnist.traindataset().size
 
-testData = mnist.testdataset().data:double():div(255):reshape(10000,1,28,28)
-testlabels = mnist.testdataset().label+1
+testData = mnist.testdataset().data:double():div(255):reshape(10000,1,28,28)--:cuda()
+testlabels = (mnist.testdataset().label+1)--:cuda()
 teSize = mnist.testdataset().size
 print(N,teSize)
 --[[
@@ -108,13 +114,13 @@ testlabels = testset.label:cuda()
 local theta,gradTheta = autoencoder:getParameters()
 local thetaAdv,gradThetaAdv = adversary:getParameters()
 
-local criterion = nn.BCECriterion()
-local classification_criterion = nn.ClassNLLCriterion()
+local criterion = nn.BCECriterion()--:cuda()
+local classification_criterion = nn.ClassNLLCriterion()--:cuda()
 
 local x,y
 
 batchSize = 3000
-iterations = 10
+iterations = 50
 
 local feval = function(params)
 	if theta~=params then
@@ -127,6 +133,7 @@ local feval = function(params)
 	local x2 = torch.sign(x1)
 	local x2 = nn.Threshold(0,0):forward(x2)
 	local xHat = decoder:forward(x2)
+  
 	--]]
 	local xHat = autoencoder:forward(x)
 	local loss = criterion:forward(xHat,x)
@@ -171,16 +178,17 @@ for epoch=1,iterations do
 	autoencoder:training()
 	collectgarbage()
 	print('Epoch '..epoch..'/'..iterations)
-	for n=1,N, batchSize do
+	for n=1,N,batchSize do
 		collectgarbage()
-		x = trainData:narrow(1,n,batchSize)
-		y = trainlabels:narrow(1,n,batchSize)
+		x = trainData:narrow(1,n,batchSize)--:cuda()
+		--print(x:size())
+		y = trainlabels:narrow(1,n,batchSize)--:cuda()
 		_,loss = optim.adam(feval,theta,optimParams)
 		losses[#losses + 1] = loss[1]
 		_,loss = optim.adam(advFeval,thetaAdv,advOptimParams)
 		advLosses[#advLosses + 1] = loss[1]
 	end
-	local plots={{'Reconstruction', torch.linspace(1,#losses,#losses), torch.Tensor(losses), '-'}}
+	local plots={{'reconstruction', torch.linspace(1,#losses,#losses), torch.Tensor(losses), '-'}}
 	plots[2]={'Adversary', torch.linspace(1,#advLosses,#advLosses), torch.Tensor(advLosses), '-'}
 	totLoss = torch.Tensor(losses)+torch.Tensor(advLosses)
 	plots[3]={'Recons+Adversary', torch.linspace(1,totLoss:size(1),totLoss:size(1)), totLoss, '-'}
@@ -191,12 +199,12 @@ for epoch=1,iterations do
 	gnuplot.plotflush()
 
 	--permute training data
-	indices = torch.randperm(trainData:size(1)):long()
-	trainData = trainData:index(1,indices)
-	trainlabels = trainlabels:index(1,indices)
+	indices = torch.randperm(trainData:size(1)):long()--:cuda()
+	trainData = trainData:index(1,indices)--:cuda()
+	trainlabels = trainlabels:index(1,indices)--:cuda()
 
   autoencoder:evaluate()
-  x = testData:narrow(1,1,50)
+  x = testData:narrow(1,1,50)--:cuda()
   --[[local x_hsv = torch.Tensor(x:size()):typeAs(x)
   for i=1,x:size()[1] do
     x_hsv[i] = image.rgb2hsv(x[i])
@@ -226,7 +234,7 @@ for epoch=1,iterations do
 end
 
 print('Testing')
-x = testData:narrow(1,1,50)
+x = testData:narrow(1,1,50)--:cuda()
 --[[local x_hsv = torch.Tensor(x:size()):typeAs(x)
 for i=1,x:size()[1] do
   x_hsv[i] = image.rgb2hsv(x[i])
@@ -252,6 +260,6 @@ end
 ---print(#xHat)
 --temp=torch.cat(image.toDisplayTensor(x,2,50),image.toDisplayTensor(xHat,2,50),2)
 --print (#temp)
-image.save('AdvAE/Reconstructions_mnist.png', torch.cat(image.toDisplayTensor(x,2,50),image.toDisplayTensor(xHat_hsv,2,50),2))
-torch.save('AdvAE/encoder1.t7',encoder)
-torch.save('AdvAE/decoder1.t7',decoder)
+image.save('AdvAE/Reconstructions_mnist_cnn.png', torch.cat(image.toDisplayTensor(x,2,50),image.toDisplayTensor(xHat_hsv,2,50),2))
+torch.save('AdvAE/encoder_1.t7',encoder)
+torch.save('AdvAE/decoder_1.t7',decoder)
