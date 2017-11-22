@@ -39,7 +39,7 @@ local x,y
 batchSize = 3000
 iterations = 50
 num_retrieval = 5;
-retrieval_vec = torch.Tensor(teSize,num_retrieval+1)
+retrieval_vec = torch.Tensor(teSize,3)
 
 --Train
 print('Dictionary retrieving')
@@ -50,12 +50,20 @@ for n=1,teSize do
 	x = testData[n];
 	--print(x:size())
 	x1 = autoencoder:forward(x)
+	retrieval_vec[n][1] = testlabels[n];
+	retrieval_vec[n][2] = 0;
+	retrieval_vec[n][3] = 0;
 	for i=1,dict:size(1) do
 		dict_val[i] = x1:dot(dict[i])
+		if (dict_val[i]>=zSize-4) then
+			retrieval_vec[n][2] = retrieval_vec[n][2]+1;
+			if(trainlabels[i]==testlabels[n]) then
+				retrieval_vec[n][3] = retrieval_vec[n][3]+1;
+			end
+		end
 	end
 	_,index = torch.sort(dict_val,true)
-	retrieval_vec[n][1] = testlabels[n];
-	retrieval_vec[{{n},{2,num_retrieval+1}}] = trainlabels:index(1,index[{{1,num_retrieval}}]:long());
+	--retrieval_vec[{{n},{2,num_retrieval+1}}] = trainlabels:index(1,index[{{1,num_retrieval}}]:long());
 end
 
 torch.save('AdvAE/mnist_retrieval.t7',retrieval_vec)
