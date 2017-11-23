@@ -44,14 +44,16 @@ retrieval_vec = torch.Tensor(teSize,3)
 --Train
 print('Dictionary retrieving')
 x1 = autoencoder:forward(testData)
-testData = nil;
-autoencoder = nil;
-dict = dict:cuda()
+--testData = nil;
+--autoencoder = nil;
+--collectgarbage()
+--dict = dict:cuda()
 dict_val = torch.Tensor(dict:size(1))
-dict_val = torch.mm(x1,dict:transpose(1,2))
+dict_val = torch.mm(x1:double(),dict:transpose(1,2))
+print("mult done")
 for n=1,teSize do
 	collectgarbage()
-	if n%1000==0 then print("yeah") end
+	if n%100==0 then print("yeah") end
 	--x = testData[n];
 	--print(x:size())
 	--x1 = autoencoder:forward(x)
