@@ -44,8 +44,11 @@ retrieval_vec = torch.Tensor(teSize,3)
 --Train
 print('Dictionary retrieving')
 x1 = autoencoder:forward(testData)
-
+testData = nil;
+autoencoder = nil;
+dict = dict:cuda()
 dict_val = torch.Tensor(dict:size(1))
+dict_val = torch.mm(x1,dict:transpose(1,2))
 for n=1,teSize do
 	collectgarbage()
 	if n%1000==0 then print("yeah") end
@@ -57,7 +60,7 @@ for n=1,teSize do
 	retrieval_vec[n][3] = 0;
 	for i=1,dict:size(1) do
 		--dict_val[i] = x1:dot(dict[i]:cuda())
-		if (dict_val[i]>=zSize-4) then  --- Hamming Distance<=2 --> dot product val>=zSize-4
+		if (dict_val[n][i]>=zSize-4) then  --- Hamming Distance<=2 --> dot product val>=zSize-4
 			retrieval_vec[n][2] = retrieval_vec[n][2]+1;
 			if(trainlabels[i]==testlabels[n]) then
 				retrieval_vec[n][3] = retrieval_vec[n][3]+1;
